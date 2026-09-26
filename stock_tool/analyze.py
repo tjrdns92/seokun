@@ -143,10 +143,11 @@ def dca_backtest(p: pd.Series, months_list: list[int], monthly: float, lump: flo
 
 # ────────────────────── 미래: 몬테카를로 (블록 부트스트랩) ──────────────────────
 
-def monte_carlo(p: pd.Series, months_list: list[int], monthly: float, lump: float,
-                drift_keep: float, n_sims: int, seed: int = 42) -> list[dict]:
+def simulate_values(p: pd.Series, max_m: int, monthly: float, lump: float,
+                    drift_keep: float, n_sims: int, seed: int = 42) -> tuple[np.ndarray, np.ndarray]:
     """과거 일별 수익률을 21일 블록 단위로 재표본추출해 미래 경로를 만든다.
-    drift_keep<1이면 과거 평균수익률(드리프트)을 그만큼만 인정 → 과거의 '대박'이 반복된다는 가정을 깎는다."""
+    drift_keep<1이면 과거 평균수익률(드리프트)을 그만큼만 인정 → 과거의 '대박'이 반복된다는 가정을 깎는다.
+    반환: (월말 평가액 [n_sims, max_m], 누적 원금 [max_m])"""
     lr = np.log(p).diff().dropna().values
     if len(lr) > 15 * TRADING_DAYS:  # 너무 오래된 데이터 비중 과다 방지: 최근 15년
         lr = lr[-15 * TRADING_DAYS:]
@@ -156,27 +157,33 @@ def monte_carlo(p: pd.Series, months_list: list[int], monthly: float, lump: floa
     if mu_arith > 0:  # 좋은 과거만 깎는다 (나쁜 과거는 그대로 반영)
         lr = lr + (drift_keep * mu_arith - var / 2) - lr.mean()
     rng = np.random.default_rng(seed)
-    max_m = max(months_list)
-    n_blocks_avail = len(lr) - MONTH_DAYS
-    starts = rng.integers(0, n_blocks_avail, size=(n_sims, max_m))
+    starts = rng.integers(0, len(lr) - MONTH_DAYS, size=(n_sims, max_m))
     # 각 시뮬레이션·각 달의 월 로그수익률 (21일 블록 합)
     csum = np.concatenate([[0.0], np.cumsum(lr)])
     monthly_lr = csum[starts + MONTH_DAYS] - csum[starts]
     price_path = np.exp(np.cumsum(monthly_lr, axis=1))  # 각 월말 가격(시작=1)
     buy_price = np.concatenate([np.ones((n_sims, 1)), price_path[:, :-1]], axis=1)  # 각 월초 가격
+    shares = lump + np.cumsum(monthly / buy_price, axis=1)
+    invested = lump + monthly * np.arange(1, max_m + 1)
+    return shares * price_path, invested
 
+
+def summarize(values: np.ndarray, invested: np.ndarray, months_list: list[int]) -> list[dict]:
     out = []
     for months in months_list:
-        shares = lump / 1.0 + (monthly / buy_price[:, :months]).sum(axis=1)
-        final = shares * price_path[:, months - 1]
-        invested = lump + monthly * months
-        profit = final - invested
-        # 경로 중 최대 평가손실(원금 대비)
-        out.append({"months": months, "invested": invested, "p_win": (profit > 0).mean(),
+        final, inv = values[:, months - 1], invested[months - 1]
+        profit = final - inv
+        out.append({"months": months, "invested": inv, "p_win": (profit > 0).mean(),
                     "median": np.median(profit), "p10": np.percentile(profit, 10),
-                    "p90": np.percentile(profit, 90), "p_loss20": (profit < -0.2 * invested).mean(),
-                    "exp_return": np.median(final / invested) - 1})
+                    "p90": np.percentile(profit, 90), "p_loss20": (profit < -0.2 * inv).mean(),
+                    "exp_return": np.median(final / inv) - 1})
     return out
+
+
+def monte_carlo(p: pd.Series, months_list: list[int], monthly: float, lump: float,
+                drift_keep: float, n_sims: int, seed: int = 42) -> list[dict]:
+    values, invested = simulate_values(p, max(months_list), monthly, lump, drift_keep, n_sims, seed)
+    return summarize(values, invested, months_list)
 
 
 # ────────────────────── 현재 상태 조건부: 지금 같은 때 샀다면? ──────────────────────

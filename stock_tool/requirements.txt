@@ -1,3 +1,6 @@
-yfinance>=0.2.40
+yfinance>=0.2.54
+finance-datareader>=0.9.90
 pandas>=2.0
 numpy>=1.24
+streamlit>=1.50
+plotly>=5.20

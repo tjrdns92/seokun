@@ -57,3 +57,29 @@ python analyze.py --csv prices.csv --name 종목명  # 인터넷 없이: Date, C
 - **가격 CSV**: 야후파이낸스 Historical Data → Download 한 파일을 올리거나 붙여넣기
 - **가정값**: 기대 연수익률·변동성을 직접 입력 (성격별 예시 버튼 제공)
 - **예시**: 가상 데이터로 동작 확인
+
+## 실시간 웹 앱 (종목 검색 + 실시간 시세) — `app.py`
+
+- **종목 검색:** 한국 종목은 이름·6자리 코드(KRX 전체 상장목록), 해외 종목은 영문 이름·티커
+- **실시간 시세:** 60초마다 자동 갱신 (야후파이낸스 기준, 거래소에 따라 최대 20분 지연)
+- **분석:** 등급, 권장 보유기간, 이익 확률, 예상 손익, 평가액 범위 차트, 과거 성과
+- 병목 종목(하이닉스·삼성전자·HD현대일렉트릭·효성중공업·LS ELECTRIC·두산에너빌리티·GEV·NVDA·TSMC·Vertiv) 바로가기
+
+### 휴대폰에서 쓰기: Streamlit Community Cloud 무료 배포 (5분)
+
+1. https://share.streamlit.io 접속 → **Continue with GitHub** 로 로그인
+2. **Create app** → "Deploy a public app from GitHub"
+3. Repository: `tjrdns92/seokun` · Branch: 이 코드가 있는 브랜치 · Main file path: `stock_tool/app.py`
+4. **Deploy** → 1~3분 뒤 나오는 `https://….streamlit.app` 주소를 휴대폰 홈 화면에 추가
+
+- 비공개 저장소도 배포 가능합니다(GitHub 권한 허용 필요). 앱 공개 범위는 앱 Settings → Sharing에서 정합니다.
+- 코드를 푸시하면 앱이 자동으로 갱신됩니다.
+
+### 내 컴퓨터에서 실행
+
+```bash
+pip install -r stock_tool/requirements.txt
+streamlit run stock_tool/app.py
+```
+
+`STOCKTOOL_OFFLINE=1 streamlit run stock_tool/app.py` 로 실행하면 인터넷 없이 가상 데이터로 화면만 확인할 수 있습니다.
