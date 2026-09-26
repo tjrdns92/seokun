@@ -1,0 +1,603 @@
+<title>종목 확률 분석기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#F3F4F1; --panel:#FFFFFF; --ink:#18212B; --ink-2:#4A5563; --mute:#7C8794;
+  --line:#DDE1DC; --line-2:#EBEEEA; --accent:#2E6B57; --accent-soft:#E2EEE8;
+  --gain:#D2334A; --gain-soft:#FBE7EA; --loss:#2B67D1; --loss-soft:#E4EDFB;
+  --warn:#A8660F; --warn-soft:#FBF0DE;
+  --band-outer:rgba(46,107,87,.14); --band-inner:rgba(46,107,87,.28);
+  --sans:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121619; --panel:#1A2024; --ink:#E6EAEC; --ink-2:#B3BCC4; --mute:#85909A;
+    --line:#2C353B; --line-2:#232B30; --accent:#6CC0A0; --accent-soft:#1D3129;
+    --gain:#FF6B7F; --gain-soft:#3A1E24; --loss:#6FA2FF; --loss-soft:#1C2A40;
+    --warn:#E9A94A; --warn-soft:#352914;
+    --band-outer:rgba(108,192,160,.14); --band-inner:rgba(108,192,160,.30);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121619; --panel:#1A2024; --ink:#E6EAEC; --ink-2:#B3BCC4; --mute:#85909A;
+  --line:#2C353B; --line-2:#232B30; --accent:#6CC0A0; --accent-soft:#1D3129;
+  --gain:#FF6B7F; --gain-soft:#3A1E24; --loss:#6FA2FF; --loss-soft:#1C2A40;
+  --warn:#E9A94A; --warn-soft:#352914;
+  --band-outer:rgba(108,192,160,.14); --band-inner:rgba(108,192,160,.30);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--sans);margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+h1,h2,h3{text-wrap:balance;margin:0}
+.num,td,th,.mono{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.top h1{font-size:24px;font-weight:700;letter-spacing:-.01em}
+.top p{margin:0;color:var(--ink-2);font-size:14px}
+
+.layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:880px){.layout{grid-template-columns:minmax(0,1fr)}}
+
+/* input panel */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.inputs{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:grid;gap:18px}
+@media (max-width:880px){.inputs{position:static}}
+.field{display:grid;gap:6px}
+.label{font-size:12px;font-weight:600;color:var(--ink-2);letter-spacing:.04em}
+input[type=text],input[type=number],select,textarea{
+  width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:7px;padding:8px 10px}
+textarea{font-family:var(--mono);font-size:12px;min-height:84px;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.unit{position:relative}
+.unit input{padding-right:44px}
+.unit span{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--mute);font-size:13px;pointer-events:none}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;font-weight:500;background:var(--panel);color:var(--ink-2);border:0;padding:8px 4px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);border-radius:999px;padding:4px 10px;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.hint{font-size:12px;color:var(--mute);margin:0}
+.status{font-size:12px;padding:6px 10px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+.status.err{background:var(--gain-soft);color:var(--gain)}
+details summary{cursor:pointer;font-size:12px;color:var(--accent);font-weight:500}
+details ol{margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--ink-2)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.rangeval{display:flex;justify-content:space-between;font-size:12px;color:var(--mute)}
+.file{font-size:13px}
+
+/* results */
+.results{display:grid;gap:20px;min-width:0}
+.results>*,.two>*{min-width:0}
+.verdict{display:grid;gap:14px}
+.vhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.vhead h2{font-size:18px;font-weight:600}
+.badge{font-size:11px;font-weight:600;letter-spacing:.04em;padding:3px 8px;border-radius:5px;background:var(--line-2);color:var(--ink-2)}
+.badge.example{background:var(--warn-soft);color:var(--warn)}
+.grade{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:13px;padding:4px 10px;border-radius:999px}
+.grade.A{background:var(--accent-soft);color:var(--accent)}
+.grade.B{background:var(--warn-soft);color:var(--warn)}
+.grade.C{background:var(--gain-soft);color:var(--gain)}
+.headline{font-size:22px;font-weight:600;line-height:1.4;letter-spacing:-.01em}
+.headline b{color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--panel);padding:10px 12px;display:grid;gap:2px}
+.kpi .k{font-size:11px;color:var(--mute);letter-spacing:.04em}
+.kpi .v{font-family:var(--mono);font-size:17px;font-weight:600}
+.lines{display:grid;gap:6px;margin:0;padding:0;list-style:none;font-size:14px}
+.lines li{display:grid;grid-template-columns:72px 1fr;gap:10px}
+.lines .t{font-size:12px;font-weight:600;color:var(--mute);padding-top:2px}
+.note{font-size:13px;padding:10px 12px;border-radius:7px;background:var(--warn-soft);color:var(--ink)}
+.note b{color:var(--warn)}
+.gain{color:var(--gain)} .loss{color:var(--loss)}
+
+.sec h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.sec .sub{font-size:13px;color:var(--mute);margin:0 0 12px}
+.chart{width:100%;overflow-x:auto}
+.chart svg{display:block;width:100%;height:auto;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line-2)}
+th{font-size:11px;font-weight:600;color:var(--mute);letter-spacing:.04em;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--mono)}
+td:first-child{font-family:var(--sans);font-weight:500}
+tr.pick td{background:var(--accent-soft)}
+.pbar{display:inline-grid;grid-template-columns:52px 34px;align-items:center;gap:8px;justify-content:end}
+.pbar span{height:6px;border-radius:3px;background:var(--line);position:relative;overflow:hidden}
+.pbar span i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:3px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--line-2);border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
+.stat{background:var(--panel);padding:10px 12px}
+.stat .k{font-size:11px;color:var(--mute)}
+.stat .v{font-family:var(--mono);font-weight:600;font-size:15px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+@media (max-width:980px){.two{grid-template-columns:minmax(0,1fr)}}
+.fine{font-size:13px;color:var(--ink-2);margin:0;padding-left:18px;display:grid;gap:4px}
+button.run{font:inherit;font-weight:600;background:var(--accent);color:var(--panel);border:0;border-radius:8px;padding:10px;cursor:pointer}
+button.run:hover{filter:brightness(1.08)}
+@media (prefers-reduced-motion:no-preference){.results{transition:opacity .2s}}
+.busy .results{opacity:.55}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>종목 확률 분석기</h1>
+    <p>몇 년 동안 넣고 들고 가면, 몇 % 확률로, 얼마가 되는지 계산합니다.</p>
+  </header>
+
+  <div class="layout">
+    <!-- ───── 입력 ───── -->
+    <form class="panel inputs" id="form" autocomplete="off">
+      <div class="field">
+        <label class="label" for="name">종목 이름</label>
+        <input type="text" id="name" value="예시 종목">
+      </div>
+
+      <div class="field">
+        <span class="label">데이터</span>
+        <div class="seg" role="group" aria-label="데이터 방식">
+          <button type="button" data-mode="csv" id="m-csv" aria-pressed="false">가격 CSV</button>
+          <button type="button" data-mode="param" id="m-param" aria-pressed="false">가정값</button>
+          <button type="button" data-mode="demo" id="m-demo" aria-pressed="true">예시</button>
+        </div>
+      </div>
+
+      <div id="pane-csv" class="field" hidden>
+        <input class="file" type="file" id="file" accept=".csv,.txt,text/csv">
+        <textarea id="paste" placeholder="또는 여기에 붙여넣기&#10;Date,Close&#10;2024-01-02,138000&#10;..."></textarea>
+        <div id="csv-status" class="status" hidden></div>
+        <details>
+          <summary>CSV 받는 방법</summary>
+          <ol>
+            <li>야후파이낸스(PC)에서 종목 검색 (예: 000660.KS, 267260.KS, NVDA)</li>
+            <li>Historical Data → 기간 Max → Download</li>
+            <li>받은 파일을 위에 올리면 끝. 인베스팅닷컴 '과거 데이터' CSV도 됩니다.</li>
+          </ol>
+          <p class="hint" style="margin-top:6px">날짜 열(Date/날짜)과 종가 열(Close/Adj Close/종가)만 있으면 됩니다. 최소 2년치 필요.</p>
+        </details>
+      </div>
+
+      <div id="pane-param" class="field" hidden>
+        <div class="row2">
+          <div class="field">
+            <label class="label" for="p-ret">기대 연수익률</label>
+            <div class="unit"><input type="number" id="p-ret" value="10" step="1"><span>%</span></div>
+          </div>
+          <div class="field">
+            <label class="label" for="p-vol">연 변동성</label>
+            <div class="unit"><input type="number" id="p-vol" value="30" step="1" min="1"><span>%</span></div>
+          </div>
+        </div>
+        <div class="chips" id="presets">
+          <button type="button" class="chip" data-r="8" data-v="16">지수 ETF형</button>
+          <button type="button" class="chip" data-r="10" data-v="28">대형 우량주형</button>
+          <button type="button" class="chip" data-r="14" data-v="45">반도체·성장주형</button>
+          <button type="button" class="chip" data-r="12" data-v="65">소형 테마주형</button>
+        </div>
+        <p class="hint">버튼 값은 성격별 가정 예시입니다. 실제 종목 데이터가 아닙니다.</p>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label class="label" for="lump">처음 일시금</label>
+          <div class="unit"><input type="number" id="lump" value="1000" min="0" step="100"><span>만원</span></div>
+        </div>
+        <div class="field">
+          <label class="label" for="monthly">매월 적립</label>
+          <div class="unit"><input type="number" id="monthly" value="200" min="0" step="10"><span>만원</span></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="target">권장 보유기간 기준</label>
+        <select id="target">
+          <option value="0.7">이익 확률 70% 이상</option>
+          <option value="0.8" selected>이익 확률 80% 이상</option>
+          <option value="0.9">이익 확률 90% 이상</option>
+        </select>
+      </div>
+
+      <div class="field" id="keep-field">
+        <label class="label" for="keep">과거 수익률을 얼마나 믿을까</label>
+        <input type="range" id="keep" min="0" max="100" step="10" value="50">
+        <div class="rangeval"><span>보수적</span><span id="keep-val" class="mono">50%</span><span>과거 그대로</span></div>
+      </div>
+
+      <button type="submit" class="run">분석하기</button>
+    </form>
+
+    <!-- ───── 결과 ───── -->
+    <main class="results" id="results" aria-live="polite"></main>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const TD = 252, MD = 21, HORIZONS = [6, 12, 24, 36, 60, 120], SIMS = 8000;
+const $ = id => document.getElementById(id);
+
+/* ───────── 유틸 ───────── */
+function mulberry(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function randn(r){let u=0;while(u===0)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r());}
+function pct(sorted,q){const i=(sorted.length-1)*q/100,lo=Math.floor(i),hi=Math.ceil(i);return sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo);}
+function sortF(a){return Float64Array.from(a).sort();}
+function mean(a){let s=0;for(const x of a)s+=x;return s/a.length;}
+function variance(a){const m=mean(a);let s=0;for(const x of a)s+=(x-m)**2;return s/(a.length-1);}
+function median(a){return pct(sortF(a),50);}
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function won(x){const s=x<0?"-":"+",a=Math.abs(x);if(a>=1e8)return s+(a/1e8).toFixed(2)+"억";return s+Math.round(a/1e4).toLocaleString("ko-KR")+"만";}
+function plainWon(x){if(x===0)return"0원";return won(x).replace(/^\+/,"");}
+function sgnCls(x){return x>0?"gain":x<0?"loss":"";}
+function wonC(x){return `<span class="${sgnCls(x)}">${won(x)}</span>`;}
+function pctS(x,d=0){return (x>0?"+":"")+(x*100).toFixed(d)+"%";}
+function pctC(x,d=0){return `<span class="${sgnCls(x)}">${pctS(x,d)}</span>`;}
+function hLabel(m){return m%12===0?`${m/12}년`:`${m}개월`;}
+
+/* ───────── 데이터 ───────── */
+function demoSeries(){
+  const r=mulberry(4), n=15*TD, px=new Float64Array(n), dates=[];
+  const d=new Date(); d.setHours(0,0,0,0);
+  const tmp=[]; while(tmp.length<n){const w=d.getDay(); if(w!==0&&w!==6)tmp.push(new Date(d)); d.setDate(d.getDate()-1);}
+  tmp.reverse(); dates.push(...tmp);
+  const daily=new Float64Array(n);
+  for(let i=0;i<n;i++)daily[i]=0.15/TD+0.30/Math.sqrt(TD)*randn(r);
+  for(let k=0;k<3;k++){const s=Math.floor(r()*n);for(let j=s;j<Math.min(n,s+40);j++)daily[j]-=0.004;}
+  let lp=Math.log(10000); for(let i=0;i<n;i++){lp+=daily[i];px[i]=Math.exp(lp);}
+  return {dates,px};
+}
+
+function parseCSVText(text){
+  const lines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+  if(lines.length<3) throw new Error("행이 너무 적습니다. 날짜와 종가가 있는 CSV인지 확인하세요.");
+  const delim=[",",";","\t"].map(d=>[d,(lines[0].match(new RegExp(d==="\t"?"\t":"\\"+d,"g"))||[]).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const split=l=>{const out=[];let cur="",q=false;for(const ch of l){if(ch==='"'){q=!q;}else if(ch===delim&&!q){out.push(cur);cur="";}else cur+=ch;}out.push(cur);return out.map(s=>s.trim());};
+  const head=split(lines[0]).map(h=>h.replace(/^﻿/,"").toLowerCase());
+  const di=head.findIndex(h=>/date|날짜|일자|time/.test(h));
+  let ci=head.findIndex(h=>/adj/.test(h));
+  if(ci<0) ci=head.findIndex(h=>/^(close|종가|price|현재가|last)/.test(h)||/close|종가/.test(h));
+  if(di<0||ci<0) throw new Error("날짜 열(Date/날짜)과 종가 열(Close/종가)을 찾지 못했습니다. 첫 줄이 열 이름인지 확인하세요.");
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const c=split(lines[i]); if(c.length<=Math.max(di,ci))continue;
+    const v=parseFloat(c[ci].replace(/[,\s"원$₩]/g,""));
+    const d=parseDate(c[di]);
+    if(isFinite(v)&&v>0&&d) rows.push([d,v]);
+  }
+  rows.sort((a,b)=>a[0]-b[0]);
+  const dates=[],px=[];
+  for(const [d,v] of rows){ if(dates.length&&+dates[dates.length-1]===+d)continue; dates.push(d);px.push(v);}
+  if(px.length<TD*2) throw new Error(`유효한 데이터가 ${px.length}일뿐입니다. 최소 2년(약 504거래일)이 필요합니다.`);
+  return {dates,px:Float64Array.from(px)};
+}
+function parseDate(s){
+  s=s.replace(/"/g,"").trim();
+  let m=s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/); if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return new Date(+m[3],+m[1]-1,+m[2]);
+  m=s.match(/^(\d{4})(\d{2})(\d{2})$/); if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  const t=Date.parse(s); return isNaN(t)?null:new Date(t);
+}
+
+/* ───────── 분석 ───────── */
+function basicStats(dates,px){
+  const n=px.length, years=n/TD, lr=new Float64Array(n-1);
+  for(let i=1;i<n;i++)lr[i-1]=Math.log(px[i]/px[i-1]);
+  const cagr=Math.pow(px[n-1]/px[0],1/years)-1, vol=Math.sqrt(variance(lr)*TD);
+  let peak=-Infinity,mdd=0; const dd=new Float64Array(n);
+  for(let i=0;i<n;i++){peak=Math.max(peak,px[i]);dd[i]=px[i]/peak-1;mdd=Math.min(mdd,dd[i]);}
+  let ma200=NaN; if(n>=200){let s=0;for(let i=n-200;i<n;i++)s+=px[i];ma200=s/200;}
+  let hi52=0; for(let i=Math.max(0,n-TD);i<n;i++)hi52=Math.max(hi52,px[i]);
+  let g=0,l=0; for(let i=n-14;i<n;i++){const d=px[i]-px[i-1]; if(d>0)g+=d; else l-=d;}
+  const rsi=l>0?100-100/(1+g/l):100;
+  return {start:dates[0],end:dates[n-1],years,last:px[n-1],cagr,vol,mdd,ddNow:dd[n-1],dd,
+    off52:px[n-1]/hi52-1, above:isNaN(ma200)?null:px[n-1]>ma200, maGap:px[n-1]/ma200-1, rsi};
+}
+
+function rollingLump(px){
+  const out=[];
+  for(const h of [0.25,0.5,1,2,3,5,10]){
+    const d=Math.round(h*TD); if(d>=px.length-20)continue;
+    const r=new Float64Array(px.length-d); let win=0,l20=0;
+    for(let i=0;i<r.length;i++){r[i]=px[i+d]/px[i]-1; if(r[i]>0)win++; if(r[i]<-0.2)l20++;}
+    const s=r.sort();
+    out.push({h,n:r.length,pWin:win/r.length,median:pct(s,50),p10:pct(s,10),p90:pct(s,90),pLoss20:l20/r.length});
+  }
+  return out;
+}
+
+function monthStarts(dates,px){
+  const m=[]; let last="";
+  for(let i=0;i<px.length;i++){const k=dates[i].getFullYear()*12+dates[i].getMonth(); if(k!==last){m.push(px[i]);last=k;}}
+  return m;
+}
+function dcaBacktest(dates,px,monthly,lump){
+  const m=monthStarts(dates,px), out=[];
+  for(const months of HORIZONS){
+    if(m.length<months+2)continue;
+    const profits=[]; let invested=lump+monthly*months;
+    for(let s=0;s+months<m.length;s++){
+      let sh=lump/m[s]; for(let k=0;k<months;k++)sh+=monthly/m[s+k];
+      profits.push(sh*m[s+months]-invested);
+    }
+    const sp=sortF(profits); let win=0; for(const p of profits)if(p>0)win++;
+    out.push({months,n:profits.length,invested,pWin:win/profits.length,median:pct(sp,50),p10:pct(sp,10),p90:pct(sp,90)});
+  }
+  return out;
+}
+
+/* 몬테카를로: 월 로그수익률 생성기(gen)로 경로를 만들고 일시금+적립 실행 */
+function simulate(gen,monthly,lump,seed=42){
+  const M=HORIZONS[HORIZONS.length-1], r=mulberry(seed);
+  const vals=new Float64Array(SIMS*M);
+  for(let s=0;s<SIMS;s++){
+    let lp=0, price=1, shares=lump; // 월초 가격 1에서 일시금 매수
+    for(let m=0;m<M;m++){
+      shares+=monthly/price;              // 월초 적립
+      lp+=gen(r); price=Math.exp(lp);     // 한 달 경과
+      vals[s*M+m]=shares*price;           // 월말 평가액
+    }
+  }
+  const col=new Float64Array(SIMS), fan=[];
+  const stat=m=>{for(let s=0;s<SIMS;s++)col[s]=vals[s*M+m];return col.slice().sort();};
+  for(let m=0;m<M;m++){const s=stat(m);fan.push({m:m+1,inv:lump+monthly*(m+1),p10:pct(s,10),p25:pct(s,25),p50:pct(s,50),p75:pct(s,75),p90:pct(s,90)});}
+  const rows=HORIZONS.map(months=>{
+    const s=stat(months-1), inv=lump+monthly*months;
+    let win=0,l20=0; for(const v of s){if(v>inv)win++; if(v<inv*0.8)l20++;}
+    return {months,invested:inv,pWin:win/SIMS,median:pct(s,50)-inv,p10:pct(s,10)-inv,p90:pct(s,90)-inv,pLoss20:l20/SIMS};
+  });
+  return {rows,fan};
+}
+function histGen(px,keep){
+  let lr=[]; for(let i=1;i<px.length;i++)lr.push(Math.log(px[i]/px[i-1]));
+  if(lr.length>15*TD) lr=lr.slice(-15*TD);
+  const v=variance(lr), mu=mean(lr), muA=mu+v/2;
+  const shift = muA>0 ? (keep*muA - v/2) - mu : 0; // 좋은 과거만 깎는다
+  const cs=new Float64Array(lr.length+1); for(let i=0;i<lr.length;i++)cs[i+1]=cs[i]+lr[i]+shift;
+  const nb=lr.length-MD;
+  return r=>{const st=Math.floor(r()*nb); return cs[st+MD]-cs[st];};
+}
+function paramGen(ret,vol){
+  // 기대 연수익률(산술)을 월 로그수익률로: (ln(1+r) - σ²/2)/12. 꼬리가 두꺼운 t분포(자유도 5)
+  const mu=(Math.log(1+ret)-vol*vol/2)/12, sd=vol/Math.sqrt(12), df=5, sc=Math.sqrt((df-2)/df);
+  return r=>{let c=0;for(let k=0;k<df;k++){const z=randn(r);c+=z*z;} return mu+sd*sc*randn(r)/Math.sqrt(c/df);};
+}
+
+function conditionalNow(px,st){
+  const n=px.length; if(n<200+TD+50)return null;
+  const ma=new Float64Array(n).fill(NaN); let s=0;
+  for(let i=0;i<n;i++){s+=px[i]; if(i>=200)s-=px[i-200]; if(i>=199)ma[i]=s/200;}
+  const nowAbove=px[n-1]>ma[n-1], nowDD=st.ddNow;
+  const sample=[], all=[];
+  for(let i=199;i<n-TD;i++){
+    const f=px[i+TD]/px[i]-1; all.push(f);
+    if(Math.abs(st.dd[i]-nowDD)<=0.07 && (px[i]>ma[i])===nowAbove) sample.push(f);
+  }
+  if(sample.length<60)return null;
+  const w=a=>a.filter(x=>x>0).length/a.length;
+  return {n:sample.length,pWin:w(sample),median:median(sample),basePWin:w(all),baseMedian:median(all),ddNow:nowDD,above:nowAbove};
+}
+
+function verdict(ctx){
+  const {mc,st,cond,target,mode,vol}=ctx;
+  const hold=(mc.rows.find(r=>r.pWin>=target)||{}).months||null;
+  let entry;
+  if(mode==="param") entry="적립식 (가정값 모드라 현재 가격 위치는 판단하지 않음)";
+  else if(cond && cond.pWin<cond.basePWin-0.05) entry="분할매수 (지금과 비슷한 상황에서 과거 1년 성과가 평균보다 나빴음)";
+  else if(st.ddNow<=-0.25 && st.above===false) entry="분할매수 (하락추세 중 큰 낙폭, 바닥 확인 전 한 번에 사지 말 것)";
+  else if(st.ddNow<=-0.15) entry="적극 분할매수 (고점 대비 큰 조정)";
+  else if(st.rsi>=75 && st.off52>-0.03) entry="추격 자제, 적립식만 (단기 과열: RSI 높고 52주 신고가 부근)";
+  else entry="적립식 + 조정 시 추가매수";
+  const y1=mc.rows.find(r=>r.months===12);
+  let grade,gradeText;
+  if(hold&&hold<=24&&y1&&y1.pLoss20<0.15){grade="A";gradeText="확률 우위 뚜렷";}
+  else if(hold&&hold<=60){grade="B";gradeText="장기보유 전제 시 확률 우위";}
+  else {grade="C";gradeText="장기보유로도 확률 우위 약함, 비중 작게";}
+  const notes=[];
+  if(vol>0.45)notes.push(`연 변동성 ${(vol*100).toFixed(0)}%로 매우 큽니다. 전체 자산의 10% 이하 비중을 권장합니다.`);
+  if(st&&st.mdd<-0.6)notes.push(`역사적 최대낙폭이 ${(st.mdd*100).toFixed(0)}%입니다. 이만큼 떨어져도 버틸 수 있는 금액만 넣으세요.`);
+  if(st&&st.years<7)notes.push(`데이터가 ${st.years.toFixed(1)}년뿐입니다. 한 번의 상승장만 본 통계일 수 있어 신뢰도가 낮습니다.`);
+  if(st&&st.cagr>0.3)notes.push(`과거 연수익률 ${(st.cagr*100).toFixed(0)}%는 예외적입니다. 같은 속도가 반복된다고 가정하면 안 됩니다.`);
+  return {hold,entry,grade,gradeText,notes};
+}
+
+/* ───────── 차트 ───────── */
+function fanChart(fan){
+  const W=760,H=300,L=64,R=16,T=14,B=34, M=fan.length;
+  const maxY=Math.max(...fan.map(f=>f.p90),...fan.map(f=>f.inv))*1.04;
+  const x=m=>L+(W-L-R)*(m/M), y=v=>T+(H-T-B)*(1-v/maxY);
+  const area=(a,b)=>"M"+fan.map(f=>`${x(f.m).toFixed(1)},${y(f[a]).toFixed(1)}`).join("L")+"L"+fan.slice().reverse().map(f=>`${x(f.m).toFixed(1)},${y(f[b]).toFixed(1)}`).join("L")+"Z";
+  const step=niceStep(maxY/4); let grid="";
+  for(let v=0;v<=maxY;v+=step){grid+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line-2)"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="var(--mute)">${axisWon(v)}</text>`;}
+  let xt=""; for(const m of [12,24,36,60,120].filter(m=>m<=M)){xt+=`<line x1="${x(m)}" x2="${x(m)}" y1="${T}" y2="${H-B}" stroke="var(--line-2)"/><text x="${x(m)}" y="${H-B+18}" text-anchor="middle" font-size="11" fill="var(--mute)">${m/12}년</text>`;}
+  const last=fan[M-1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="보유기간별 예상 평가액 범위">
+    ${grid}${xt}
+    <path d="${area("p90","p10")}" fill="var(--band-outer)"/>
+    <path d="${area("p75","p25")}" fill="var(--band-inner)"/>
+    <path d="M${x(0)},${y(fan[0].inv-(fan[1].inv-fan[0].inv))}${fan.map(f=>`L${x(f.m)},${y(f.inv)}`).join("")}" fill="none" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <path d="${"M"+fan.map(f=>`${x(f.m).toFixed(1)},${y(f.p50).toFixed(1)}`).join("L")}" fill="none" stroke="var(--accent)" stroke-width="2.4"/>
+    <circle cx="${x(M)}" cy="${y(last.p50)}" r="4" fill="var(--accent)"/>
+    <line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" stroke="var(--line)"/>
+  </svg>`;
+}
+function priceChart(dates,px,st){
+  const W=760,H=180,L=56,R=12,T=10,B=26,n=px.length;
+  const lo=Math.log(Math.min(...px)),hi=Math.log(Math.max(...px));
+  const step=Math.max(1,Math.floor(n/600));
+  const x=i=>L+(W-L-R)*i/(n-1), y=v=>T+(H-T-B)*(1-(Math.log(v)-lo)/(hi-lo||1));
+  let d="M"; for(let i=0;i<n;i+=step)d+=`${x(i).toFixed(1)},${y(px[i]).toFixed(1)}L`; d+=`${x(n-1).toFixed(1)},${y(px[n-1]).toFixed(1)}`;
+  let xt="", y0=dates[0].getFullYear(), y1=dates[n-1].getFullYear(), ys=Math.max(1,Math.ceil((y1-y0)/6));
+  for(let yr=y0+1;yr<=y1;yr+=ys){const i=dates.findIndex(dt=>dt.getFullYear()===yr); if(i>0)xt+=`<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H-B}" stroke="var(--line-2)"/><text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--mute)">${yr}</text>`;}
+  const fmt=v=>v>=1e4?Math.round(v).toLocaleString("ko-KR"):v.toFixed(v<10?2:1);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="가격 추이(로그 스케일)">${xt}
+    <text x="${L-8}" y="${y(Math.exp(hi))+4}" text-anchor="end" font-size="11" fill="var(--mute)">${fmt(Math.exp(hi))}</text>
+    <text x="${L-8}" y="${y(Math.exp(lo))+4}" text-anchor="end" font-size="11" fill="var(--mute)">${fmt(Math.exp(lo))}</text>
+    <path d="${d}" fill="none" stroke="var(--ink-2)" stroke-width="1.4"/>
+    <circle cx="${x(n-1)}" cy="${y(px[n-1])}" r="3.5" fill="var(--accent)"/>
+    <line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" stroke="var(--line)"/></svg>`;
+}
+function niceStep(raw){const p=Math.pow(10,Math.floor(Math.log10(raw))),f=raw/p;return (f<1.5?1:f<3?2:f<7?5:10)*p;}
+function axisWon(v){if(v===0)return"0";if(v>=1e8)return (v/1e8).toFixed(v%1e8?1:0)+"억";return Math.round(v/1e4).toLocaleString("ko-KR")+"만";}
+
+/* ───────── 렌더 ───────── */
+function render(res){
+  const {name,mode,badge,mc,st,lump,dca,cond,v,lumpAmt,monthly,keep}=res;
+  const pick=mc.rows.find(r=>r.months===v.hold)||mc.rows.reduce((a,b)=>b.pWin>a.pWin?b:a);
+  const past5=lump&&lump.find(r=>r.h===5), fut5=mc.rows.find(r=>r.months===60);
+  const gap=past5&&fut5&&past5.pWin-fut5.pWin>=0.15;
+  const plan=`일시금 ${plainWon(lumpAmt)} + 매월 ${plainWon(monthly)}`;
+
+  let h=`<section class="panel verdict">
+    <div class="vhead"><h2>${esc(name)}</h2><span class="badge ${mode==="demo"?"example":""}">${esc(badge)}</span>
+      <span class="grade ${v.grade}">등급 ${v.grade} · ${v.gradeText}</span></div>
+    <p class="headline" style="margin:0">${hLabel(pick.months)} 동안 넣고 보유하면 이익 확률 <b>${(pick.pWin*100).toFixed(0)}%</b>${v.hold?"":` <span style="font-size:14px;color:var(--mute);font-weight:500">(시뮬레이션한 최장 10년 안에 ${(res.target*100).toFixed(0)}%에 도달하지 못해, 가장 높은 기간을 표시)</span>`}</p>
+    <div class="kpis">
+      <div class="kpi"><span class="k">넣는 원금</span><span class="v">${plainWon(pick.invested)}</span></div>
+      <div class="kpi"><span class="k">예상 손익 (중앙값)</span><span class="v">${wonC(pick.median)}</span></div>
+      <div class="kpi"><span class="k">나쁜 경우 (하위 10%)</span><span class="v">${wonC(pick.p10)}</span></div>
+      <div class="kpi"><span class="k">좋은 경우 (상위 10%)</span><span class="v">${wonC(pick.p90)}</span></div>
+    </div>
+    <ul class="lines">
+      <li><span class="t">보유기간</span><span>${v.hold?`최소 <b>${hLabel(v.hold)}</b> (이익 확률 ${(res.target*100).toFixed(0)}% 이상이 되는 가장 짧은 기간)`:`10년 안에 이익 확률 ${(res.target*100).toFixed(0)}%에 도달하지 못함`}</span></li>
+      <li><span class="t">진입 방법</span><span>${esc(v.entry)}</span></li>
+      <li><span class="t">투자 방식</span><span>${plan}</span></li>
+    </ul>
+    ${gap?`<div class="note"><b>과거 승률을 그대로 믿지 마세요.</b> 과거엔 5년 보유 시 ${(past5.pWin*100).toFixed(0)}% 이겼지만 그건 한 번 일어난 역사입니다. 같은 변동성으로 미래를 보수적으로 돌리면 ${(fut5.pWin*100).toFixed(0)}%입니다.</div>`:""}
+    ${v.notes.map(n=>`<div class="note"><b>주의</b> ${esc(n)}</div>`).join("")}
+  </section>`;
+
+  h+=`<section class="panel sec"><h3>앞으로 내 계좌는 어떻게 될까</h3>
+    <p class="sub">${plan}을 넣었을 때의 평가액 범위 · 시뮬레이션 ${SIMS.toLocaleString()}회${mode==="hist"||mode==="demo"?` · 과거 평균수익률의 ${Math.round(keep*100)}%만 인정`:""}</p>
+    <div class="chart">${fanChart(mc.fan)}</div>
+    <div class="legend"><span><i style="background:var(--accent);height:3px"></i>중앙값</span><span><i style="background:var(--band-inner)"></i>50% 확률 범위</span><span><i style="background:var(--band-outer)"></i>80% 확률 범위</span><span><i style="border-top:2px dashed var(--ink-2);height:0;border-radius:0"></i>넣은 원금</span></div>
+  </section>`;
+
+  h+=`<section class="panel sec"><h3>보유기간별 결과</h3><p class="sub">빨강은 이익, 파랑은 손실 (국내 증시 표기)</p><div class="tbl"><table>
+    <thead><tr><th>보유기간</th><th>원금</th><th>이익 확률</th><th>예상 손익</th><th>나쁜 경우</th><th>좋은 경우</th><th>-20% 넘게 잃을 확률</th></tr></thead><tbody>
+    ${mc.rows.map(r=>`<tr class="${r.months===pick.months?"pick":""}"><td>${hLabel(r.months)}</td><td>${plainWon(r.invested)}</td>
+      <td><span class="pbar"><span><i style="width:${(r.pWin*100).toFixed(0)}%"></i></span>${(r.pWin*100).toFixed(0)}%</span></td>
+      <td>${wonC(r.median)}</td><td>${wonC(r.p10)}</td><td>${wonC(r.p90)}</td><td>${(r.pLoss20*100).toFixed(0)}%</td></tr>`).join("")}
+    </tbody></table></div></section>`;
+
+  if(st){
+    const s=st;
+    h+=`<section class="panel sec"><h3>가격 흐름과 현재 위치</h3>
+      <p class="sub">${fmtD(s.start)} ~ ${fmtD(s.end)} · ${s.years.toFixed(1)}년 · 로그 스케일</p>
+      <div class="chart">${priceChart(res.dates,res.px,s)}</div>
+      <div class="stats" style="margin-top:12px">
+        ${stat("연평균 수익률",pctC(s.cagr,1))}${stat("연 변동성",(s.vol*100).toFixed(1)+"%")}
+        ${stat("역사적 최대낙폭",`<span class="loss">${(s.mdd*100).toFixed(1)}%</span>`)}${stat("고점 대비 현재",pctC(s.ddNow,1))}
+        ${stat("52주 고점 대비",pctC(s.off52,1))}${stat("200일선 대비",isNaN(s.maGap)?"-":pctC(s.maGap,1))}
+        ${stat("RSI(14)",s.rsi.toFixed(0))}${stat("현재가",s.last.toLocaleString("ko-KR",{maximumFractionDigits:2}))}
+      </div></section>`;
+    if(cond) h+=`<section class="panel sec"><h3>지금과 비슷했던 때 샀다면, 1년 뒤</h3>
+      <p class="sub">고점 대비 ${pctS(cond.ddNow)}(±7%p) · 200일선 ${cond.above?"위":"아래"}였던 과거 ${cond.n.toLocaleString()}일</p>
+      <div class="stats">${stat("이 조건의 이익 확률",(cond.pWin*100).toFixed(0)+"%")}${stat("전체 평균 이익 확률",(cond.basePWin*100).toFixed(0)+"%")}
+      ${stat("이 조건의 중앙 수익률",pctC(cond.median))}${stat("전체 평균 중앙 수익률",pctC(cond.baseMedian))}</div></section>`;
+    h+=`<div class="two">
+      <section class="panel sec"><h3>과거: 아무 날에나 한 번에 샀다면</h3><p class="sub">실제 가격 기록에서 겹치는 구간을 모두 센 결과</p><div class="tbl"><table>
+      <thead><tr><th>보유</th><th>이익 확률</th><th>중앙</th><th>하위10%</th><th>상위10%</th></tr></thead><tbody>
+      ${lump.map(r=>`<tr><td>${r.h<1?Math.round(r.h*12)+"개월":r.h+"년"}</td><td>${(r.pWin*100).toFixed(0)}%</td><td>${pctC(r.median)}</td><td>${pctC(r.p10)}</td><td>${pctC(r.p90)}</td></tr>`).join("")}
+      </tbody></table></div></section>
+      <section class="panel sec"><h3>과거: 내 방식으로 아무 달에 시작했다면</h3><p class="sub">${plan}</p><div class="tbl"><table>
+      <thead><tr><th>기간</th><th>이익 확률</th><th>손익 중앙</th><th>하위10%</th><th>상위10%</th></tr></thead><tbody>
+      ${dca.map(r=>`<tr><td>${hLabel(r.months)}</td><td>${(r.pWin*100).toFixed(0)}%</td><td>${wonC(r.median)}</td><td>${wonC(r.p10)}</td><td>${wonC(r.p90)}</td></tr>`).join("")}
+      </tbody></table></div></section></div>`;
+  }
+
+  h+=`<section class="panel sec"><h3>이 숫자를 읽는 법</h3><ul class="fine">
+    <li>무조건 이기는 분석은 없습니다. 모든 확률은 과거 가격의 움직임이 앞으로도 비슷하다는 가정 위의 추정치입니다.</li>
+    <li>같은 성격의 가상 종목도 운에 따라 15년 성과가 연 -4%에서 +29%까지 갈립니다. 과거 표보다 미래 시뮬레이션을 기준으로 판단하세요.</li>
+    <li>지금 검색되는 종목은 살아남은 종목입니다. 상장폐지되거나 장기 부진한 종목은 통계에 없습니다(생존편향).</li>
+    <li>실적, 산업 사이클, 금리, 전쟁 같은 펀더멘털은 계산에 없습니다. 환율, 세금, 수수료도 빠져 있습니다.</li>
+    <li>이 도구는 "얼마나 오래, 어떤 방식으로" 넣을지 정하는 용도입니다. "무엇을" 살지는 따로 판단하세요.</li>
+  </ul></section>`;
+  $("results").innerHTML=h;
+}
+function stat(k,v){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;}
+function fmtD(d){return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;}
+
+/* ───────── 상태 & 실행 ───────── */
+let mode="demo", csvData=null, csvLabel="";
+const demo=demoSeries();
+
+function setMode(m){
+  mode=m;
+  for(const b of document.querySelectorAll(".seg button"))b.setAttribute("aria-pressed",String(b.dataset.mode===m));
+  $("pane-csv").hidden=m!=="csv"; $("pane-param").hidden=m!=="param"; $("keep-field").hidden=m==="param";
+  if(m==="demo"&&!$("name").value.trim())$("name").value="예시 종목";
+  save(); schedule();
+}
+
+function run(){
+  const lumpAmt=Math.max(0,+$("lump").value||0)*1e4, monthly=Math.max(0,+$("monthly").value||0)*1e4;
+  const target=+$("target").value, keep=+$("keep").value/100;
+  const name=$("name").value.trim()||"이름 없는 종목";
+  if(lumpAmt+monthly<=0){$("results").innerHTML=`<section class="panel"><p class="status err">일시금이나 매월 적립 중 하나는 0보다 커야 합니다.</p></section>`;return;}
+  if(mode==="param"){
+    const ret=(+$("p-ret").value||0)/100, vol=Math.max(0.01,(+$("p-vol").value||1)/100);
+    const mc=simulate(paramGen(ret,vol),monthly,lumpAmt);
+    const v=verdict({mc,st:null,cond:null,target,mode,vol});
+    render({name,mode,badge:`가정값 · 연 ${(ret*100).toFixed(0)}% / 변동성 ${(vol*100).toFixed(0)}%`,mc,st:null,v,lumpAmt,monthly,keep,target});
+    return;
+  }
+  let data=demo, badge="예시 데이터 (가상)";
+  if(mode==="csv"){
+    if(!csvData){$("results").innerHTML=`<section class="panel sec"><h3>CSV를 올려주세요</h3><p class="sub" style="margin:0">왼쪽에서 가격 CSV 파일을 고르거나 내용을 붙여넣으면 바로 분석합니다. 받는 방법은 'CSV 받는 방법'을 눌러 보세요.</p></section>`;return;}
+    data=csvData; badge=csvLabel;
+  }
+  const st=basicStats(data.dates,data.px);
+  const mc=simulate(histGen(data.px,keep),monthly,lumpAmt);
+  const lump=rollingLump(data.px), dca=dcaBacktest(data.dates,data.px,monthly,lumpAmt), cond=conditionalNow(data.px,st);
+  const v=verdict({mc,st,cond,target,mode,vol:st.vol});
+  render({name,mode,badge,mc,st,lump,dca,cond,v,lumpAmt,monthly,keep,target,dates:data.dates,px:data.px});
+}
+let timer=null;
+function schedule(){clearTimeout(timer);document.body.classList.add("busy");timer=setTimeout(()=>{try{run();}finally{document.body.classList.remove("busy");}},250);}
+
+function loadCSV(text,label){
+  const el=$("csv-status"); el.hidden=false;
+  try{
+    csvData=parseCSVText(text);
+    const n=csvData.px.length;
+    csvLabel=`${fmtD(csvData.dates[0])} ~ ${fmtD(csvData.dates[n-1])}`;
+    el.className="status"; el.textContent=`${label}: ${n.toLocaleString()}일치 읽음 (${csvLabel})`;
+    if(!$("name").value.trim()||$("name").value==="예시 종목")$("name").value=label.replace(/\.(csv|txt)$/i,"");
+    schedule();
+  }catch(e){csvData=null;el.className="status err";el.textContent=e.message;schedule();}
+}
+
+/* 입력값 기억 (이 브라우저에만) */
+const KEYS=["name","lump","monthly","target","keep","p-ret","p-vol"];
+function save(){try{const o={mode:mode==="csv"?"demo":mode};for(const k of KEYS)o[k]=$(k).value;localStorage.setItem("stockodds",JSON.stringify(o));}catch(e){}}
+function restore(){try{const o=JSON.parse(localStorage.getItem("stockodds")||"null");if(!o)return;for(const k of KEYS)if(o[k]!=null)$(k).value=o[k];if(o.mode)mode=o.mode;}catch(e){}}
+
+restore();
+$("keep-val").textContent=$("keep").value+"%";
+for(const b of document.querySelectorAll(".seg button"))b.addEventListener("click",()=>setMode(b.dataset.mode));
+for(const c of document.querySelectorAll("#presets .chip"))c.addEventListener("click",()=>{$("p-ret").value=c.dataset.r;$("p-vol").value=c.dataset.v;save();schedule();});
+$("keep").addEventListener("input",()=>{$("keep-val").textContent=$("keep").value+"%";});
+for(const k of KEYS)$(k).addEventListener("change",()=>{save();schedule();});
+$("form").addEventListener("submit",e=>{e.preventDefault();save();schedule();});
+$("file").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>loadCSV(String(rd.result),f.name);rd.readAsText(f);});
+$("paste").addEventListener("input",()=>{clearTimeout(loadCSV._t);loadCSV._t=setTimeout(()=>{if($("paste").value.trim())loadCSV($("paste").value,"붙여넣은 데이터");},400);});
+setMode(mode);
+})();
+</script>
